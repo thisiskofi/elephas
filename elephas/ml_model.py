@@ -106,6 +106,9 @@ class ElephasTransformer(Model, HasKerasModelConfig, HasLabelCol, HasOutputCol):
         features = np.asarray(rdd.map(lambda x: from_vector(x.features)).collect())
         # Note that we collect, since executing this on the rdd would require model serialization once again
         model = model_from_yaml(self.get_keras_model_config())
+
+        #KAB we should allow the user to specify the loss and optimizer
+        model.compile(loss='categorical_crossentropy',optimizer='sgd')
         model.set_weights(self.weights.value)
         predictions = rdd.ctx.parallelize(model.predict_classes(features)).coalesce(1)
         predictions = predictions.map(lambda x: tuple(str(x)))
