@@ -112,7 +112,8 @@ class RMSprop(Optimizer):
         accumulators = [np.zeros_like(p) for p in params]
         new_weights = []
 
-        for p, g, a, c in zip(params, grads, accumulators, constraints):
+        #for p, g, a, c in zip(params, grads, accumulators, constraints):
+        for p, g, a, c in zip(params, grads, accumulators):
             new_a = self.rho * a + (1 - self.rho) * g ** 2
             self.updates.append((a, new_a))
 
@@ -140,8 +141,9 @@ class Adagrad(Optimizer):
     def get_updates(self, params, constraints, grads):
         accumulators = [np.zeros_like(p) for p in params]
         new_weights = []
-
-        for p, g, a, c in zip(params, grads, accumulators, constraints):
+        print("constraints:", constraints)
+        #for p, g, a, c in zip(params, grads, accumulators, constraints):
+        for p, g, a in zip(params, grads, accumulators):
             new_a = a + g ** 2
             new_p = p - self.lr * g / np.sqrt(new_a + self.epsilon)
             new_weights.append(new_p)
@@ -168,8 +170,7 @@ class Adadelta(Optimizer):
         delta_accumulators = [np.zeros_like(p) for p in params]
         new_weights = []
 
-        for p, g, a, d_a, c in zip(params, grads, accumulators,
-                                   delta_accumulators, constraints):
+        for p, g, a, d_a, c in zip(params, grads, accumulators, delta_accumulators, constraints):
             new_a = self.rho * a + (1 - self.rho) * g ** 2
             self.updates.append((a, new_a))
             # use the new accumulator and the *old* delta_accumulator
@@ -206,7 +207,8 @@ class Adam(Optimizer):
         t = self.iterations + 1
         lr_t = self.lr * np.sqrt(1-self.beta_2**t)/(1-self.beta_1**t)
 
-        for p, g, c in zip(params, grads, constraints):
+        #for p, g, c in zip(params, grads, constraints):
+        for p, g in zip(params, grads):
             m = np.zeros_like(p)  # zero init of moment
             v = np.zeros_like(p)  # zero init of velocity
 
