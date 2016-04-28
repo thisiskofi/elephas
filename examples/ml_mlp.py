@@ -19,13 +19,17 @@ from pyspark.ml import Pipeline
 # Define basic parameters
 batch_size = 64
 nb_classes = 10
-nb_epoch = 1
+nb_epoch = 10
 
 # Load data
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
 x_train = x_train.reshape(60000, 784)
 x_test = x_test.reshape(10000, 784)
+
+x_train = x_train[:30000,...]
+x_test = x_test[:10000,...]
+
 x_train = x_train.astype("float32")
 x_test = x_test.astype("float32")
 x_train /= 255
@@ -50,7 +54,7 @@ model.add(Activation('softmax'))
 
 # Compile model
 adam = Adam()
-model.compile(loss='categorical_crossentropy', optimizer=adam)
+model.compile(loss='categorical_crossentropy', optimizer='sgd')
 
 # Create Spark context
 conf = SparkConf().setAppName('Mnist_Spark_MLP').setMaster('local[8]')
@@ -61,7 +65,7 @@ df = to_data_frame(sc, x_train, y_train, categorical=True)
 test_df = to_data_frame(sc, x_test, y_test, categorical=True)
 
 # Define elephas optimizer
-adadelta = elephas_optimizers.Adadelta()
+adadelta = elephas_optimizers.Adagrad()
 
 # Initialize Spark ML Estimator
 estimator = ElephasEstimator()

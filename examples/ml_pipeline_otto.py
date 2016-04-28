@@ -74,13 +74,14 @@ model.compile(loss='categorical_crossentropy', optimizer='adam')
 
 
 # Initialize Elephas Spark ML Estimator
-adadelta = elephas_optimizers.Adadelta()
+#adadelta = elephas_optimizers.Adadelta()
+adagrad = elephas_optimizers.Adagrad()
 
 estimator = ElephasEstimator()
 estimator.setFeaturesCol("scaled_features")
 estimator.setLabelCol("index_category")
 estimator.set_keras_model_config(model.to_yaml())
-estimator.set_optimizer_config(adadelta.get_config())
+estimator.set_optimizer_config(adagrad.get_config())
 estimator.set_nb_epoch(10)
 estimator.set_batch_size(128)
 estimator.set_num_workers(1)
