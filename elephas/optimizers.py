@@ -79,14 +79,16 @@ class SGD(Optimizer):
         self.updates = [(self.iterations, self.iterations + 1.)]
         new_weights = []
 
-        for p, g, c in zip(params, grads, constraints):
+        #for p, g, c in zip(params, grads, constraints):
+        for p, g  in zip(params, grads):
             m = np.zeros_like(p)  # momentum
             v = self.momentum * m - lr * g  # velocity
             if self.nesterov:
                 new_p = p + self.momentum * v - lr * g
             else:
                 new_p = p + v
-            new_weights.append(c(new_p))
+            #new_weights.append(c(new_p))
+            new_weights.append(new_p)
 
         return new_weights
 
@@ -118,7 +120,8 @@ class RMSprop(Optimizer):
             self.updates.append((a, new_a))
 
             new_p = p - self.lr * g / np.sqrt(new_a + self.epsilon)
-            new_weights.append(c(new_p))
+            #new_weights.append(c(new_p))
+            new_weights.append(new_p)
 
         return new_weights
 
@@ -141,7 +144,8 @@ class Adagrad(Optimizer):
     def get_updates(self, params, constraints, grads):
         accumulators = [np.zeros_like(p) for p in params]
         new_weights = []
-        print("constraints:", constraints)
+        #print("params len:", len(params))
+        #print("constraints:", constraints)
         #for p, g, a, c in zip(params, grads, accumulators, constraints):
         for p, g, a in zip(params, grads, accumulators):
             new_a = a + g ** 2
@@ -170,14 +174,16 @@ class Adadelta(Optimizer):
         delta_accumulators = [np.zeros_like(p) for p in params]
         new_weights = []
 
-        for p, g, a, d_a, c in zip(params, grads, accumulators, delta_accumulators, constraints):
+        #for p, g, a, d_a, c in zip(params, grads, accumulators, delta_accumulators, constraints):
+        for p, g, a, d_a, c in zip(params, grads, accumulators, delta_accumulators):
             new_a = self.rho * a + (1 - self.rho) * g ** 2
             self.updates.append((a, new_a))
             # use the new accumulator and the *old* delta_accumulator
             div = np.sqrt(new_a + self.epsilon)
             update = g * np.sqrt(d_a + self.epsilon) / div
             new_p = p - self.lr * update
-            self.updates.append((p, c(new_p)))  # apply constraints
+            #self.updates.append((p, c(new_p)))  # apply constraints
+            self.updates.append((p, new_p))  # apply constraints
 
             new_weights.append(new_p)
         return new_weights
@@ -215,7 +221,8 @@ class Adam(Optimizer):
             m_t = (self.beta_1 * m) + (1 - self.beta_1) * g
             v_t = (self.beta_2 * v) + (1 - self.beta_2) * (g**2)
             p_t = p - lr_t * m_t / (np.sqrt(v_t) + self.epsilon)
-            new_weights.append(c(p_t))
+            #new_weights.append(c(p_t))
+            new_weights.append(p_t)
 
         return new_weights
 
