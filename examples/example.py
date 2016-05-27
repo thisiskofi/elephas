@@ -26,8 +26,8 @@ nb_classes = 10
 nb_epoch = 10
 
 # Create Spark context
-#conf = SparkConf().setAppName('Mnist_Spark_MLP').setMaster('local[8]')
-#sc = SparkContext(conf=conf)
+conf = SparkConf().setAppName('Mnist_Spark_MLP').setMaster('local[8]')
+sc = SparkContext(conf=conf)
 
 # Load data
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
