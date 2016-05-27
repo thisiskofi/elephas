@@ -1,6 +1,10 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
+
+import keras.backend
+keras.backend._keras_base_dir='./'
+
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Activation
@@ -11,7 +15,10 @@ from elephas.spark_model import SparkModel
 from elephas.utils.rdd_utils import to_simple_rdd
 from elephas import optimizers as elephas_optimizers
 
+
+
 from pyspark import SparkContext, SparkConf
+
 
 # Define basic parameters
 batch_size = 256
@@ -19,8 +26,8 @@ nb_classes = 10
 nb_epoch = 10
 
 # Create Spark context
-conf = SparkConf().setAppName('Mnist_Spark_MLP').setMaster('local[8]')
-sc = SparkContext(conf=conf)
+#conf = SparkConf().setAppName('Mnist_Spark_MLP').setMaster('local[8]')
+#sc = SparkContext(conf=conf)
 
 # Load data
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -69,7 +76,7 @@ spark_model = SparkModel(sc,
                          optimizer=adagrad,
                          frequency='batch',
                          mode='hogwild',
-                         num_workers=6)
+                         num_workers=1)
 
 # Train Spark model
 spark_model.train(rdd, nb_epoch=nb_epoch, batch_size=batch_size, verbose=2, validation_split=0.1)
