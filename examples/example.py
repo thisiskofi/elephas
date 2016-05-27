@@ -48,10 +48,10 @@ y_test = np_utils.to_categorical(y_test, nb_classes)
 from keras.constraints import maxnorm
 
 model = Sequential()
-model.add(Dense(128, input_dim=784))
+model.add(Dense(128, input_dim=784, W_constraint=maxnorm(2)))
 model.add(Activation('relu'))
 model.add(Dropout(0.2))
-model.add(Dense(128))
+model.add(Dense(128, b_constraint=maxnorm(1)))
 model.add(Activation('relu'))
 model.add(Dropout(0.2))
 model.add(Dense(10))

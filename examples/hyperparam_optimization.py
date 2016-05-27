@@ -8,14 +8,15 @@ from elephas.hyperparam import HyperParamModel
 
 from pyspark import SparkContext, SparkConf
 
-def data():
-    '''
-    Data providing function:
+import cPickle as pickle
 
-    Make sure to have every relevant import statement included here and return data as
-    used in model function below. This function is separated from model() so that hyperopt
-    won't reload data for each evaluation run.
-    '''
+def data():
+    #KAB: Having this in triple quotes doesn't work
+    #Data providing function:
+    #Make sure to have every relevant import statement included here and return data as
+    #used in model function below. This function is separated from model() so that hyperopt
+    #won't reload data for each evaluation run.
+
     from keras.datasets import mnist
     from keras.utils import np_utils
     (X_train, y_train), (X_test, y_test) = mnist.load_data()
@@ -57,15 +58,14 @@ def model(X_train, Y_train, X_test, Y_test):
     model.add(Activation('softmax'))
 
     rms = RMSprop()
-    model.compile(loss='categorical_crossentropy', optimizer=rms)
+    model.compile(loss='categorical_crossentropy', optimizer=rms, metrics=["accuracy"])
 
     model.fit(X_train, Y_train,
               batch_size={{choice([64, 128])}},
               nb_epoch=1,
-              show_accuracy=True,
               verbose=2,
               validation_data=(X_test, Y_test))
-    score, acc = model.evaluate(X_test, Y_test, show_accuracy=True, verbose=0)
+    score, acc = model.evaluate(X_test, Y_test, verbose=0)
     print('Test accuracy:', acc)
     return {'loss': -acc, 'status': STATUS_OK, 'model': model.to_yaml(), 'weights': pickle.dumps(model.get_weights())}
 
@@ -74,5 +74,7 @@ conf = SparkConf().setAppName('Elephas_Hyperparameter_Optimization').setMaster('
 sc = SparkContext(conf=conf)
 
 # Define hyper-parameter model and run optimization.
-hyperparam_model = HyperParamModel(sc)
-hyperparam_model.minimize(model=model, data=data, max_evals=5)
+hyperparam_model = HyperParamModel(sc,num_workers=4)
+best_model = hyperparam_model.minimize(model=model, data=data, max_evals=5)
+
+print("Best model", best_model.to_yaml())
