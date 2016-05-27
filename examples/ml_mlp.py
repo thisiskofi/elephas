@@ -19,7 +19,7 @@ from pyspark.ml import Pipeline
 # Define basic parameters
 batch_size = 64
 nb_classes = 10
-nb_epoch = 10
+nb_epoch = 30
 
 # Load data
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -27,8 +27,6 @@ nb_epoch = 10
 x_train = x_train.reshape(60000, 784)
 x_test = x_test.reshape(10000, 784)
 
-x_train = x_train[:30000,...]
-x_test = x_test[:10000,...]
 
 x_train = x_train.astype("float32")
 x_test = x_test.astype("float32")
@@ -73,11 +71,13 @@ estimator.set_keras_model_config(model.to_yaml())
 estimator.set_optimizer_config(adadelta.get_config())
 estimator.set_nb_epoch(nb_epoch)
 estimator.set_batch_size(batch_size)
-estimator.set_num_workers(1)
+estimator.set_num_workers(4)
 estimator.set_verbosity(0)
 estimator.set_validation_split(0.1)
 estimator.set_categorical_labels(True)
 estimator.set_nb_classes(nb_classes)
+
+estimator.set_frequency('batch')
 
 # Fitting a model returns a Transformer
 pipeline = Pipeline(stages=[estimator])

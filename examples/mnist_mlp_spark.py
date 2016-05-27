@@ -50,7 +50,7 @@ model.add(Activation('softmax'))
 
 # Compile model
 sgd = SGD(lr=0.1)
-model.compile(loss='categorical_crossentropy', optimizer=sgd)
+model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
 
 # Build RDD from numpy features and labels
 rdd = to_simple_rdd(sc, x_train, y_train)
