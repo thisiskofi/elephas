@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 from __future__ import print_function
+        
 
 import numpy as np
 from itertools import tee
@@ -79,7 +80,6 @@ class SparkModel(object):
         Get URL of parameter server, running on master
         '''
         master_url = socket.gethostbyname(socket.gethostname()) + ':5000'
-        master_url = "localhost:5000"
         return master_url
 
     def get_train_config(self, nb_epoch, batch_size,
@@ -257,6 +257,7 @@ class AsynchronousSparkWorker(object):
         Train a keras model on a worker and send asynchronous updates
         to parameter server
         '''
+        
         feature_iterator, label_iterator = tee(data_iterator, 2)
         x_train = np.asarray([x for x, y in feature_iterator])
         y_train = np.asarray([y for x, y in label_iterator])
