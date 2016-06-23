@@ -198,6 +198,7 @@ class SparkModel(object):
             new_parameters = get_server_weights(master_url)
 
         elif self.mode == 'synchronous':
+            #KAB this is epoch-only
             init = self.master_network.get_weights()
             parameters = self.spark_context.broadcast(init)
             worker = SparkWorker(yaml, parameters, train_config, self.keras_loss, self.keras_optimizer)
@@ -226,6 +227,7 @@ class SparkWorker(object):
         '''
         Train a keras model on a worker
         '''
+        #KAB this is not correct
         feature_iterator, label_iterator = tee(data_iterator, 2)
         x_train = np.asarray([x for x, y in feature_iterator])
         y_train = np.asarray([y for x, y in label_iterator])
@@ -268,7 +270,7 @@ class AsynchronousSparkWorker(object):
         model.compile(loss=self.keras_loss, optimizer=self.keras_optimizer)
         nb_epoch = self.train_config['nb_epoch']
         batch_size = self.train_config.get('batch_size')
-        nb_train_sample = len(x_train[0])
+        nb_train_sample = x_train.shape[0]
         nb_batch = int(np.ceil(nb_train_sample/float(batch_size)))
         index_array = np.arange(nb_train_sample)
         batches = [(i*batch_size, min(nb_train_sample, (i+1)*batch_size)) for i in range(0, nb_batch)]
