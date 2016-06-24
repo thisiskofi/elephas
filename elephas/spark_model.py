@@ -24,7 +24,10 @@ from .utils.functional_utils import subtract_params
 from .utils.rdd_utils import lp_to_simple_rdd
 from .mllib.adapter import to_matrix, from_matrix, to_vector, from_vector
 from .optimizers import SGD as default_optimizer
-
+#suppress parameter server messages
+import logging
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 def get_server_weights(master_url='localhost:5000'):
     '''
@@ -34,6 +37,14 @@ def get_server_weights(master_url='localhost:5000'):
                               headers={'Content-Type': 'application/elephas'})
     return pickle.loads(urllib2.urlopen(request).read())
 
+def get_ready_workers(master_url='localhost:5000'):
+    '''                                                                                                                                                                                                                    
+    Retrieve the number of workers ready for processing
+
+    '''
+    request = urllib2.Request('http://{0}/get_ready_workers'.format(master_url), headers={'Content-Type': 'application/elephas'})
+    return pickle.loads(urllib2.urlopen(request).read())
+    
 
 def put_deltas_to_server(delta, master_url='localhost:5000'):
     '''
@@ -44,10 +55,20 @@ def put_deltas_to_server(delta, master_url='localhost:5000'):
     return urllib2.urlopen(request).read()
 
 
+def update_ready_workers(status, master_url='localhost:5000'):
+    '''                                                                                                                                                                                                                                     Update the number of ready workers
+    '''
+    request = urllib2.Request('http://{0}/update_ready_workers'.format(master_url), 
+                              pickle.dumps(status, -1), headers={'Content-Type': 'application/elephas'})
+    return urllib2.urlopen(request).read()
+
+
+
+
 class SparkModel(object):
     '''
     SparkModel is the main abstraction of elephas. Every other model
-    should inherit from it.
+    should inherit from it.w
     '''
     def __init__(self, sc, master_network, keras_loss=None, keras_optimizer=None, optimizer=None, mode='asynchronous', frequency='epoch',
                  num_workers=4, *args, **kwargs):
@@ -70,9 +91,11 @@ class SparkModel(object):
         self.mode = mode
         self.frequency = frequency
         self.num_workers = num_workers
+        self.num_ready_workers = 0
         self.weights = master_network.get_weights()
         self.pickled_weights = None
         self.lock = RWLock()
+
 
     @staticmethod
     def determine_master():
@@ -82,7 +105,7 @@ class SparkModel(object):
         master_url = socket.gethostbyname(socket.gethostname()) + ':5000'
         return master_url
 
-    def get_train_config(self, nb_epoch, batch_size,
+    def get_train_config(self, num_workers, nb_epoch, batch_size,
                          verbose, validation_split):
         '''
         Get configuration of training parameters
@@ -143,6 +166,12 @@ class SparkModel(object):
                 self.lock.release()
             return pickled_weights
 
+        @app.route('/get_ready_workers', methods=['GET'])
+        def get_num_ready_workers():
+            pickled_num = pickle.dumps(self.num_ready_workers,-1)
+            return pickled_num
+
+
         @app.route('/update', methods=['POST'])
         def update_parameters():
             delta = pickle.loads(request.data)
@@ -153,6 +182,16 @@ class SparkModel(object):
             if self.mode == 'asynchronous':
                 self.lock.release()
             return 'Update done'
+
+        
+        @app.route('/update_ready_workers', methods=['POST'])
+        def update_num_ready_workers():
+            status = pickle.loads(request.data)
+            self.lock.acquire_write()
+            self.num_ready_workers += status
+            self.lock.release()
+            return 'Update done'
+
 
         self.app.run(host='0.0.0.0', debug=True,
                      threaded=True, use_reloader=False)
@@ -190,10 +229,10 @@ class SparkModel(object):
         if self.mode in ['asynchronous', 'hogwild']:
             self.start_server()
         yaml = self.master_network.to_yaml()
-        train_config = self.get_train_config(nb_epoch, batch_size,
+        train_config = self.get_train_config(self.num_workers,nb_epoch, batch_size,
                                              verbose, validation_split)
         if self.mode in ['asynchronous', 'hogwild']:
-            worker = AsynchronousSparkWorker(yaml, train_config, self.frequency, master_url, self.keras_loss, self.keras_optimizer)
+            worker = AsynchronousSparkWorker(yaml, train_config, self.num_workers, self.frequency, master_url, self.keras_loss, self.keras_optimizer)
             rdd.mapPartitions(worker.train).collect()
             new_parameters = get_server_weights(master_url)
 
@@ -216,12 +255,13 @@ class SparkWorker(object):
     '''
     Synchronous Spark worker. This code will be executed on workers.
     '''
-    def __init__(self, yaml, parameters, train_config, keras_loss, keras_optimizer):
+    def __init__(self, yaml, parameters, train_config, num_workers, keras_loss, keras_optimizer):
         self.yaml = yaml
         self.parameters = parameters
         self.train_config = train_config
         self.keras_loss = keras_loss
         self.keras_optimizer = keras_optimizer
+        self.num_workers = num_workers
 
     def train(self, data_iterator):
         '''
@@ -233,10 +273,10 @@ class SparkWorker(object):
         y_train = np.asarray([y for x, y in label_iterator])
         model = model_from_yaml(self.yaml)
         model.set_weights(self.parameters.value)
-        model.compile(loss=self.keras_loss, optimizer=self.keras_optimizer)
+        model.compile(loss=self.keras_loss, optimizer=self.keras_optimizer, metrics=['accuracy'])
         weights_before_training = model.get_weights()
         if x_train.shape[0] > self.train_config.get('batch_size'):
-            model.fit(x_train, y_train, show_accuracy=True, **self.train_config)
+            model.fit(x_train, y_train, **self.train_config)
         weights_after_training = model.get_weights()
         deltas = subtract_params(weights_before_training, weights_after_training)
         yield deltas
@@ -246,10 +286,11 @@ class AsynchronousSparkWorker(object):
     '''
     Asynchronous Spark worker. This code will be executed on workers.
     '''
-    def __init__(self, yaml, train_config, frequency, master_url, keras_loss, keras_optimizer):
+    def __init__(self, yaml, train_config, num_workers, frequency, master_url, keras_loss, keras_optimizer):
         self.yaml = yaml
         self.train_config = train_config
         self.frequency = frequency
+        self.num_workers = num_workers
         self.master_url = master_url
         self.keras_loss = keras_loss
         self.keras_optimizer = keras_optimizer
@@ -259,7 +300,7 @@ class AsynchronousSparkWorker(object):
         Train a keras model on a worker and send asynchronous updates
         to parameter server
         '''
-        
+        import time
         feature_iterator, label_iterator = tee(data_iterator, 2)
         x_train = np.asarray([x for x, y in feature_iterator])
         y_train = np.asarray([y for x, y in label_iterator])
@@ -267,7 +308,8 @@ class AsynchronousSparkWorker(object):
         if x_train.size == 0:
             return
         model = model_from_yaml(self.yaml)
-        model.compile(loss=self.keras_loss, optimizer=self.keras_optimizer)
+        model.compile(loss=self.keras_loss, optimizer=self.keras_optimizer, metrics=['accuracy'])
+    
         nb_epoch = self.train_config['nb_epoch']
         batch_size = self.train_config.get('batch_size')
         nb_train_sample = x_train.shape[0]
@@ -276,17 +318,29 @@ class AsynchronousSparkWorker(object):
         batches = [(i*batch_size, min(nb_train_sample, (i+1)*batch_size)) for i in range(0, nb_batch)]
 
         if self.frequency == 'epoch':
+            update_ready_workers(1,self.master_url)
+            while get_ready_workers() != self.num_workers:
+                    time.sleep(0.1)
             for epoch in range(nb_epoch):
+                print('-'*40)
+                print('Epoch', epoch)
+                print('-'*40)
                 weights_before_training = get_server_weights(self.master_url)
                 model.set_weights(weights_before_training)
                 self.train_config['nb_epoch'] = 1
                 if x_train.shape[0] > batch_size:
-                    model.fit(x_train, y_train, show_accuracy=True, **self.train_config)
+                    model.fit(x_train, y_train, **self.train_config)
                 weights_after_training = model.get_weights()
                 deltas = subtract_params(weights_before_training, weights_after_training)
                 put_deltas_to_server(deltas, self.master_url)
         elif self.frequency == 'batch':
             for epoch in range(nb_epoch):
+                update_ready_workers(1,self.master_url)
+                while get_ready_workers() != self.num_workers:
+                    time.sleep(0.1)
+                print('-'*40)
+                print('Epoch', epoch)
+                print('-'*40)
                 if x_train.shape[0] > batch_size:
                     for (batch_start, batch_end) in batches:
                         weights_before_training = get_server_weights(self.master_url)
@@ -298,6 +352,11 @@ class AsynchronousSparkWorker(object):
                         weights_after_training = model.get_weights()
                         deltas = subtract_params(weights_before_training, weights_after_training)
                         put_deltas_to_server(deltas, self.master_url)
+                
+                update_ready_workers(-1,self.master_url)
+                while get_ready_workers() != 0:
+                    time.sleep(0.1)  
+                time.sleep(0.1)
         else:
             print('Choose frequency to be either batch or epoch')
         yield []
