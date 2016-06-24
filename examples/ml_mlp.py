@@ -17,9 +17,9 @@ from pyspark.ml import Pipeline
 
 
 # Define basic parameters
-batch_size = 64
+batch_size = 32
 nb_classes = 10
-nb_epoch = 30
+nb_epoch = 10
 
 # Load data
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -56,23 +56,23 @@ model.compile(loss='categorical_crossentropy', optimizer='sgd')
 
 # Create Spark context
 conf = SparkConf().setAppName('Mnist_Spark_MLP').setMaster('local[8]')
-sc = SparkContext(conf=conf)
+#sc = SparkContext(conf=conf)
 
 # Build RDD from numpy features and labels
 df = to_data_frame(sc, x_train, y_train, categorical=True)
 test_df = to_data_frame(sc, x_test, y_test, categorical=True)
 
 # Define elephas optimizer
-adadelta = elephas_optimizers.Adagrad()
+adagrad = elephas_optimizers.Adagrad()
 
 # Initialize Spark ML Estimator
 estimator = ElephasEstimator()
 estimator.set_keras_model_config(model.to_yaml())
-estimator.set_optimizer_config(adadelta.get_config())
+estimator.set_optimizer_config(adagrad.get_config())
 estimator.set_nb_epoch(nb_epoch)
 estimator.set_batch_size(batch_size)
-estimator.set_num_workers(4)
-estimator.set_verbosity(0)
+estimator.set_num_workers(1)
+estimator.set_verbosity(2)
 estimator.set_validation_split(0.1)
 estimator.set_categorical_labels(True)
 estimator.set_nb_classes(nb_classes)

@@ -23,7 +23,7 @@ data_path = "./"
 
 # Spark contexts
 conf = SparkConf().setAppName('Otto_Spark_ML_Pipeline').setMaster('local[8]')
-sc = SparkContext(conf=conf)
+#sc = SparkContext(conf=conf)
 sql_context = SQLContext(sc)
 
 # Data loader
@@ -74,7 +74,6 @@ model.compile(loss='categorical_crossentropy', optimizer='adam')
 
 
 # Initialize Elephas Spark ML Estimator
-#adadelta = elephas_optimizers.Adadelta()
 adagrad = elephas_optimizers.Adagrad()
 
 estimator = ElephasEstimator()

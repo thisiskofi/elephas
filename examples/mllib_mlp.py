@@ -14,9 +14,9 @@ from elephas import optimizers as elephas_optimizers
 from pyspark import SparkContext, SparkConf
 
 # Define basic parameters
-batch_size = 64
+batch_size = 34
 nb_classes = 10
-nb_epoch = 3
+nb_epoch = 10
 
 # Load data
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -54,22 +54,21 @@ model.compile(loss='categorical_crossentropy', optimizer=rms, metrics=["accuracy
 
 # Create Spark context
 conf = SparkConf().setAppName('Mnist_Spark_MLP').setMaster('local[8]')
-sc = SparkContext(conf=conf)
+#sc = SparkContext(conf=conf)
 
 # Build RDD from numpy features and labels
 lp_rdd = to_labeled_point(sc, x_train, y_train, categorical=True)
 rdd = lp_to_simple_rdd(lp_rdd, True, nb_classes)
 
 # Initialize SparkModel from Keras model and Spark context
-#adadelta = elephas_optimizers.Adadelta()
 adagrad = elephas_optimizers.Adagrad()
 
 spark_model = SparkMLlibModel(sc, model, optimizer=adagrad, frequency='batch', mode='asynchronous', num_workers=2)
 
 # Train Spark model
-spark_model.train(lp_rdd, nb_epoch=20, batch_size=batch_size, verbose=0,
+spark_model.train(lp_rdd, nb_epoch=nb_epoch, batch_size=batch_size, verbose=0,
                   validation_split=0.1, categorical=True, nb_classes=nb_classes)
 
 # Evaluate Spark model by evaluating the underlying model
-score = spark_model.master_network.evaluate(x_test, y_test, show_accuracy=True, verbose=2)
+score = spark_model.master_network.evaluate(x_test, y_test, verbose=2)
 print('Test accuracy:', score[1])

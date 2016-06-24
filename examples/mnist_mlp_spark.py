@@ -1,6 +1,10 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
+
+import keras.backend
+keras.backend._keras_base_dir='./'
+
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Activation
@@ -11,16 +15,17 @@ from elephas.spark_model import SparkModel
 from elephas.utils.rdd_utils import to_simple_rdd
 from elephas import optimizers as elephas_optimizers
 
+
 from pyspark import SparkContext, SparkConf
 
 # Define basic parameters
 batch_size = 64
 nb_classes = 10
-nb_epoch = 3
+nb_epoch = 10
 
 # Create Spark context
 conf = SparkConf().setAppName('Mnist_Spark_MLP').setMaster('local[8]')
-sc = SparkContext(conf=conf)
+#sc = SparkContext(conf=conf)
 
 # Load data
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -38,6 +43,7 @@ print(x_test.shape[0], 'test samples')
 y_train = np_utils.to_categorical(y_train, nb_classes)
 y_test = np_utils.to_categorical(y_test, nb_classes)
 
+
 model = Sequential()
 model.add(Dense(128, input_dim=784))
 model.add(Activation('relu'))
@@ -48,25 +54,30 @@ model.add(Dropout(0.2))
 model.add(Dense(10))
 model.add(Activation('softmax'))
 
-# Compile model
-sgd = SGD(lr=0.1)
-model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
+keras_loss = 'categorical_crossentropy'
+keras_optimizer = 'sgd'
 
+# Compile model
+#sgd = SGD(lr=0.01)
+model.compile(loss=keras_loss, optimizer=keras_optimizer, metrics=["accuracy"])
 # Build RDD from numpy features and labels
 rdd = to_simple_rdd(sc, x_train, y_train)
 
 # Initialize SparkModel from Keras model and Spark context
-adagrad = elephas_optimizers.Adagrad()
+print(model.to_yaml())
+sgd = elephas_optimizers.Adagrad(lr=0.01)
 spark_model = SparkModel(sc,
                          model,
-                         optimizer=adagrad,
-                         frequency='epoch',
-                         mode='asynchronous',
+                         keras_losss=keras_loss,
+                         keras_optimizer=keras_optimizer,
+                         optimizer=sgd,
+                         frequency='batch',
+                         mode='hogwild',
                          num_workers=2)
 
 # Train Spark model
 spark_model.train(rdd, nb_epoch=nb_epoch, batch_size=batch_size, verbose=2, validation_split=0.1)
 
 # Evaluate Spark model by evaluating the underlying model
-score = spark_model.master_network.evaluate(x_test, y_test, show_accuracy=True, verbose=2)
-print('Test accuracy:', score[1])
+loss, acc = spark_model.master_network.evaluate(x_test, y_test, verbose=2)
+print('Test accuracy:', acc)

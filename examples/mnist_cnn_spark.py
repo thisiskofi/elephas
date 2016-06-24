@@ -1,16 +1,8 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
-import tripodrt
-tripodrt.setup_dynamic_cuda_compilation_paths()
-
-
-#import logging
-#logging.getLogger("theano.sandbox.cuda.nvcc_compiler").setLevel(logging.DEBUG)
-
-
-#import keras.backend
-#keras.backend._keras_base_dir='./'
+import keras.backend
+keras.backend._keras_base_dir='./'
 
 from keras.datasets import mnist
 from keras.models import Sequential
@@ -27,12 +19,12 @@ from pyspark import SparkContext, SparkConf
 
 
 # Define basic parameters
-batch_size = 128
+batch_size = 32
 nb_classes = 10
-nb_epoch = 12
+nb_epoch = 10
 
 # Create Spark context
-#conf = SparkConf().setAppName('Mnist_Spark_MLP').setMaster('local[8]')
+conf = SparkConf().setAppName('Mnist_Spark_MLP').setMaster('local[8]')
 #sc = SparkContext(conf=conf)
 
 # input image dimensions
@@ -85,7 +77,6 @@ keras_optimizer = 'sgd'
 
 
 # Compile model
-sgd = SGD(lr=0.1)
 model.compile(loss=keras_loss, optimizer=keras_optimizer, metrics=["accuracy"])
 
 # Build RDD from numpy features and labels
@@ -93,15 +84,15 @@ rdd = to_simple_rdd(sc, X_train, Y_train)
 
 # Initialize SparkModel from Keras model and Spark context
 print(model.to_yaml())
-adagrad = elephas_optimizers.Adagrad()
+adagrad = elephas_optimizers.Adagrad(lr=0.01)
 spark_model = SparkModel(sc,
                          model,
                          keras_losss=keras_loss,
                          keras_optimizer=keras_optimizer,
                          optimizer=adagrad,
                          frequency='batch',
-                         mode='synchronous',
-                         num_workers=1)
+                         mode='hogwild',
+                         num_workers=2)
 
 # Train Spark model
 spark_model.train(rdd, nb_epoch=nb_epoch, batch_size=batch_size, verbose=2, validation_split=0.1)
