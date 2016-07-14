@@ -57,8 +57,8 @@ def model(X_train, Y_train, X_test, Y_test):
     model.add(Dense(10))
     model.add(Activation('softmax'))
 
-    rms = RMSprop()
-    model.compile(loss='categorical_crossentropy', optimizer=rms, metrics=["accuracy"])
+    
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=["accuracy"])
 
     model.fit(X_train, Y_train,
               batch_size={{choice([64, 128])}},

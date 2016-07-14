@@ -4,7 +4,6 @@ from __future__ import print_function
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Activation
-from keras.optimizers import Adam
 from keras.utils import np_utils
 
 from elephas.ml_model import ElephasEstimator
@@ -17,7 +16,7 @@ from pyspark.ml import Pipeline
 
 
 # Define basic parameters
-batch_size = 32
+batch_size = 64
 nb_classes = 10
 nb_epoch = 10
 
@@ -51,8 +50,7 @@ model.add(Activation('softmax'))
 
 
 # Compile model
-adam = Adam()
-model.compile(loss='categorical_crossentropy', optimizer='sgd')
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
 # Create Spark context
 conf = SparkConf().setAppName('Mnist_Spark_MLP').setMaster('local[8]')
@@ -71,7 +69,7 @@ estimator.set_keras_model_config(model.to_yaml())
 estimator.set_optimizer_config(adagrad.get_config())
 estimator.set_nb_epoch(nb_epoch)
 estimator.set_batch_size(batch_size)
-estimator.set_num_workers(1)
+estimator.set_num_workers(4)
 estimator.set_verbosity(2)
 estimator.set_validation_split(0.1)
 estimator.set_categorical_labels(True)
@@ -90,5 +88,5 @@ pnl.show(100)
 
 prediction_and_label = pnl.map(lambda row: (row.label, row.prediction))
 metrics = MulticlassMetrics(prediction_and_label)
-print(metrics.precision())
-print(metrics.recall())
+print("Precision:", metrics.precision())
+print("Recall:", metrics.recall())

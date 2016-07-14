@@ -5,6 +5,7 @@ from __future__ import print_function
 import keras.backend
 keras.backend._keras_base_dir='./'
 
+
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Activation
@@ -65,15 +66,17 @@ rdd = to_simple_rdd(sc, x_train, y_train)
 
 # Initialize SparkModel from Keras model and Spark context
 print(model.to_yaml())
-sgd = elephas_optimizers.Adagrad(lr=0.01)
+adagrad = elephas_optimizers.Adagrad(lr=0.01)
+#sgd = elephas_optimizers.SGD(lr=1.0)
+
 spark_model = SparkModel(sc,
                          model,
                          keras_losss=keras_loss,
                          keras_optimizer=keras_optimizer,
-                         optimizer=sgd,
+                         optimizer=adagrad,
                          frequency='batch',
-                         mode='hogwild',
-                         num_workers=2)
+                         mode='asynchronous',
+                         num_workers=4)
 
 # Train Spark model
 spark_model.train(rdd, nb_epoch=nb_epoch, batch_size=batch_size, verbose=2, validation_split=0.1)

@@ -90,12 +90,14 @@ spark_model = SparkModel(sc,
                          keras_losss=keras_loss,
                          keras_optimizer=keras_optimizer,
                          optimizer=adagrad,
-                         frequency='batch',
-                         mode='hogwild',
-                         num_workers=2)
+                         frequency='epoch',
+                         mode='asynchronous',
+                         num_workers=4)
 
 # Train Spark model
 spark_model.train(rdd, nb_epoch=nb_epoch, batch_size=batch_size, verbose=2, validation_split=0.1)
 
 # Evaluate Spark model by evaluating the underlying model
 loss, acc = spark_model.master_network.evaluate(X_test, Y_test, verbose=2)
+
+print("Test accuracy:", acc)

@@ -6,6 +6,7 @@ import numpy as np
 from itertools import tee
 import socket
 from multiprocessing import Process
+from threading import Thread
 import six.moves.cPickle as pickle
 from six.moves import range
 from flask import Flask, request
@@ -24,10 +25,12 @@ from .utils.functional_utils import subtract_params
 from .utils.rdd_utils import lp_to_simple_rdd
 from .mllib.adapter import to_matrix, from_matrix, to_vector, from_vector
 from .optimizers import SGD as default_optimizer
+
+
 #suppress parameter server messages
-import logging
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
+#import logging
+#log = logging.getLogger('werkzeug')
+#log.setLevel(logging.ERROR)
 
 def get_server_weights(master_url='localhost:5000'):
     '''
@@ -56,8 +59,10 @@ def put_deltas_to_server(delta, master_url='localhost:5000'):
 
 
 def update_ready_workers(status, master_url='localhost:5000'):
-    '''                                                                                                                                                                                                                                     Update the number of ready workers
+    '''                                                                                                                                                        Update the number of ready workers
     '''
+    #import sys
+    #sys.stderr.write("Master URL: %s" % master_url)
     request = urllib2.Request('http://{0}/update_ready_workers'.format(master_url), 
                               pickle.dumps(status, -1), headers={'Content-Type': 'application/elephas'})
     return urllib2.urlopen(request).read()
@@ -95,14 +100,30 @@ class SparkModel(object):
         self.weights = master_network.get_weights()
         self.pickled_weights = None
         self.lock = RWLock()
+        
+        #KAB not sure this is the best place for this
+        self.port = self.get_open_port()
+        
+    
+
+    def get_open_port(self):
+        """Find an open port
+        Adapted from http://stackoverflow.com/questions/2838244/get-open-tcp-port-in-python
+        """
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("",0))
+        s.listen(1)
+        port = s.getsockname()[1]
+        s.close()
+        return port
 
 
-    @staticmethod
-    def determine_master():
+    #@staticmethod
+    def determine_master(self):
         '''
         Get URL of parameter server, running on master
         '''
-        master_url = socket.gethostbyname(socket.gethostname()) + ':5000'
+        master_url = socket.gethostbyname(socket.gethostname()) + ':' + str(self.port)
         return master_url
 
     def get_train_config(self, num_workers, nb_epoch, batch_size,
@@ -140,6 +161,7 @@ class SparkModel(object):
     def start_server(self):
         ''' Start parameter server'''
         self.server = Process(target=self.start_service)
+        #self.server = Thread(target=self.start_service)
         self.server.start()
 
     def stop_server(self):
@@ -193,7 +215,7 @@ class SparkModel(object):
             return 'Update done'
 
 
-        self.app.run(host='0.0.0.0', debug=True,
+        self.app.run(host='0.0.0.0', debug=True, port=self.port,
                      threaded=True, use_reloader=False)
 
     def predict(self, data):
@@ -233,15 +255,15 @@ class SparkModel(object):
                                              verbose, validation_split)
         if self.mode in ['asynchronous', 'hogwild']:
             worker = AsynchronousSparkWorker(yaml, train_config, self.num_workers, self.frequency, master_url, self.keras_loss, self.keras_optimizer)
-            rdd.mapPartitions(worker.train).collect()
+            rdd.mapPartitionsWithIndex(worker.train).collect()
             new_parameters = get_server_weights(master_url)
 
         elif self.mode == 'synchronous':
             #KAB this is epoch-only
             init = self.master_network.get_weights()
             parameters = self.spark_context.broadcast(init)
-            worker = SparkWorker(yaml, parameters, train_config, self.keras_loss, self.keras_optimizer)
-            deltas = rdd.mapPartitions(worker.train).collect()
+            worker = SparkWorker(yaml, parameters, train_config, self.num_workers, self.keras_loss, self.keras_optimizer)
+            deltas = rdd.mapPartitionsWithIndex(worker.train).collect()
             new_parameters = self.master_network.get_weights()
             for delta in deltas:
                 constraints = self.master_network.constraints
@@ -263,7 +285,7 @@ class SparkWorker(object):
         self.keras_optimizer = keras_optimizer
         self.num_workers = num_workers
 
-    def train(self, data_iterator):
+    def train(self, partition_num, data_iterator):
         '''
         Train a keras model on a worker
         '''
@@ -295,7 +317,7 @@ class AsynchronousSparkWorker(object):
         self.keras_loss = keras_loss
         self.keras_optimizer = keras_optimizer
 
-    def train(self, data_iterator):
+    def train(self, partition_id, data_iterator):
         '''
         Train a keras model on a worker and send asynchronous updates
         to parameter server
@@ -306,7 +328,9 @@ class AsynchronousSparkWorker(object):
         y_train = np.asarray([y for x, y in label_iterator])
 
         if x_train.size == 0:
+            print("Empty Partition!")
             return
+
         model = model_from_yaml(self.yaml)
         model.compile(loss=self.keras_loss, optimizer=self.keras_optimizer, metrics=['accuracy'])
     
@@ -316,14 +340,10 @@ class AsynchronousSparkWorker(object):
         nb_batch = int(np.ceil(nb_train_sample/float(batch_size)))
         index_array = np.arange(nb_train_sample)
         batches = [(i*batch_size, min(nb_train_sample, (i+1)*batch_size)) for i in range(0, nb_batch)]
-
         if self.frequency == 'epoch':
-            update_ready_workers(1,self.master_url)
-            while get_ready_workers() != self.num_workers:
-                    time.sleep(0.1)
             for epoch in range(nb_epoch):
                 print('-'*40)
-                print('Epoch', epoch)
+                print('Partition %d/%d: Epoch %d' %(partition_id+1,self.num_workers,epoch))
                 print('-'*40)
                 weights_before_training = get_server_weights(self.master_url)
                 model.set_weights(weights_before_training)
@@ -335,11 +355,8 @@ class AsynchronousSparkWorker(object):
                 put_deltas_to_server(deltas, self.master_url)
         elif self.frequency == 'batch':
             for epoch in range(nb_epoch):
-                update_ready_workers(1,self.master_url)
-                while get_ready_workers() != self.num_workers:
-                    time.sleep(0.1)
                 print('-'*40)
-                print('Epoch', epoch)
+                print('Partition %d/%d: Epoch %d' %(partition_id+1,self.num_workers,epoch))
                 print('-'*40)
                 if x_train.shape[0] > batch_size:
                     for (batch_start, batch_end) in batches:
@@ -352,11 +369,6 @@ class AsynchronousSparkWorker(object):
                         weights_after_training = model.get_weights()
                         deltas = subtract_params(weights_before_training, weights_after_training)
                         put_deltas_to_server(deltas, self.master_url)
-                
-                update_ready_workers(-1,self.master_url)
-                while get_ready_workers() != 0:
-                    time.sleep(0.1)  
-                time.sleep(0.1)
         else:
             print('Choose frequency to be either batch or epoch')
         yield []
